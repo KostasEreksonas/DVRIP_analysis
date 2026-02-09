@@ -118,9 +118,15 @@ function XM_proto.dissector(tvb, pinfo, tree)
 		return
 	end
 
+	-- 0 = initial offset
+	-- dvrip_get_len = function that returns full PDU length
+	-- dvrip_dissect_one_pdu = function that dissects one complete DVRIP message
+	-- true = handle multiple PDUs per TCP segment [web:61][web:63]
 	dissect_tcp_pdus(tvb, tree, 0, dvrip_get_len, dvrip_dissect_one_pdu, true)
 end
 
 -- assigning protocol to port
 tcp_table = DissectorTable.get("tcp.port")
 tcp_table:add(34567, XM_proto)
+udp_table = DissectorTable.get("udp.port")
+udp_table:add(34569, XM_proto)
