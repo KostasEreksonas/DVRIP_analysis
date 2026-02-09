@@ -9,3 +9,5 @@ Tested on Besder 6024PB-XMA501 IP camera:
 Model: XM530_50X50-WG_8M
 Firmware version: V5.00.R02.00030747.10010.349f17
 ```
+
+![XM dissection example](images/dvrip_request.png)
