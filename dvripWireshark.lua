@@ -117,11 +117,6 @@ function XM_proto.dissector(tvb, pinfo, tree)
 	if tvb:len() == 0 then
 		return
 	end
-
-	-- 0 = initial offset
-	-- dvrip_get_len = function that returns full PDU length
-	-- dvrip_dissect_one_pdu = function that dissects one complete DVRIP message
-	-- true = handle multiple PDUs per TCP segment [web:61][web:63]
 	dissect_tcp_pdus(tvb, tree, 0, dvrip_get_len, dvrip_dissect_one_pdu, true)
 end
 
