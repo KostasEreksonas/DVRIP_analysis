@@ -139,25 +139,28 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 				subtree:add_le(DVRIP_newline, tvb(trailing, tvb:len() - trailing))
 			end
         else
-			if tvb(HEADER_LEN, 4):uint() == 0x000001fa then
+			-- Signature of media file
+			signature = tvb(HEADER_LEN, 4):uint()
+			if signature == 0x000001fa then -- Audio
 				local atree = subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len()-HEADER_LEN), "DVRIP Audio")
 				local atree_header = atree:add(XM_proto, tvb(HEADER_LEN, 8), "Audio Header")
+				-- Populate Audio Frame header fields
 				atree_header:add(DVRIP_audio_signature, tvb(HEADER_LEN, 4))
 				atree_header:add_le(DVRIP_audio_unknown, tvb(HEADER_LEN+4, 2))
 				atree_header:add_le(DVRIP_audio_payload_length, tvb(HEADER_LEN+6, 2))
-			elseif tvb(HEADER_LEN, 4):uint() == 0x000001fc then
+			elseif signature == 0x000001fc then -- I-Frame
 				local itree = subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len()-HEADER_LEN), "DVRIP I-Frame")
-
 				local itree_header = itree:add(XM_proto, tvb(HEADER_LEN, 20), "I-Frame Header")
-
+				-- Populate I-Frame header fields
 				itree_header:add(DVRIP_iframe_signature, tvb(HEADER_LEN, 4))
 				itree_header:add_le(DVRIP_iframe_unknown_1, tvb(HEADER_LEN+4, 4))
 				itree_header:add_le(DVRIP_iframe_unknown_2, tvb(HEADER_LEN+8, 4))
 				itree_header:add_le(DVRIP_iframe_payload_size, tvb(HEADER_LEN+12, 4))
 				itree_header:add(DVRIP_iframe_unknown_3, tvb(HEADER_LEN+16, 4))
-			elseif tvb(HEADER_LEN, 4):uint() == 0x000001fd then
+			elseif signature == 0x000001fd then -- P-Frame
 				local ptree = subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len()-HEADER_LEN), "DVRIP P-Frame")
 				local ptree_header = ptree:add(XM_proto, tvb(HEADER_LEN, 12), "P-Frame Header")
+				-- Populate P-Frame header fields
 				ptree_header:add(DVRIP_pframe_signature, tvb(HEADER_LEN, 4))
 				ptree_header:add_le(DVRIP_pframe_payload_length, tvb(HEADER_LEN+4, 2))
 				ptree_header:add_le(DVRIP_pframe_unknown_1, tvb(HEADER_LEN+6, 2))
@@ -167,7 +170,6 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 			end
 		end
 	end
-
 	return tvb:len() -- amount of bytes consumed
 end
 
