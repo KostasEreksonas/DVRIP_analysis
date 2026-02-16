@@ -59,6 +59,7 @@ DVRIP_audio_signature = ProtoField.uint32("dvrip.audio_signature", "Audio signat
 DVRIP_audio_unknown = ProtoField.uint16("dvrip.audio_unknown", "Audio unknown", base.HEX_DEC)
 DVRIP_audio_payload_length = ProtoField.uint16("dvrip.audio_payload_length", "Audio payload length", base.HEX_DEC)
 
+-- List of DVRIP/Sofia protocol fields
 XM_proto.fields = {
 	DVRIP_header,
 	DVRIP_req_resp,
@@ -115,6 +116,7 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 	header:add_le(DVRIP_payload_length, tvb(16, 4))
 
 	if tvb:len() > HEADER_LEN then
+		-- Get JSON payload
 		if tvb(HEADER_LEN, 1):uint() == 0x7b and tvb(14, 2):le_uint() ~= 0x0584 then -- 0x7b = {; 0x0584 = 1412
 			-- Length of payload
 			local payload_length = tvb(16, 4):le_uint()
@@ -139,34 +141,48 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 				subtree:add_le(DVRIP_newline, tvb(trailing, tvb:len() - trailing))
 			end
         else
-			-- Signature of media file
-			signature = tvb(HEADER_LEN, 4):uint()
+			-- Signature of media payload
+			local signature = tvb(HEADER_LEN, 4):uint()
 			if signature == 0x000001fa then -- Audio
-				local atree = subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len()-HEADER_LEN), "DVRIP Audio")
+				local atree = subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP Audio")
 				local atree_header = atree:add(XM_proto, tvb(HEADER_LEN, 8), "Audio Header")
+				-- Audio frame payload reconstruction
+				local aframe_length = tvb(HEADER_LEN + 6, 2):le_uint()
 				-- Populate Audio Frame header fields
 				atree_header:add(DVRIP_audio_signature, tvb(HEADER_LEN, 4))
-				atree_header:add_le(DVRIP_audio_unknown, tvb(HEADER_LEN+4, 2))
-				atree_header:add_le(DVRIP_audio_payload_length, tvb(HEADER_LEN+6, 2))
+				atree_header:add_le(DVRIP_audio_unknown, tvb(HEADER_LEN + 4, 2))
+				atree_header:add_le(DVRIP_audio_payload_length, tvb(HEADER_LEN + 6, 2))
+				-- Audio Frame payload
+				atree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "A-Frame")
 			elseif signature == 0x000001fc then -- I-Frame
-				local itree = subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len()-HEADER_LEN), "DVRIP I-Frame")
+				-- Add I-Frame to general tree
+				local itree = subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP I-Frame")
 				local itree_header = itree:add(XM_proto, tvb(HEADER_LEN, 20), "I-Frame Header")
+				-- I-Frame payload reconstruction
+				local iframe_length = tvb(HEADER_LEN + 12, 4):le_uint()
 				-- Populate I-Frame header fields
 				itree_header:add(DVRIP_iframe_signature, tvb(HEADER_LEN, 4))
-				itree_header:add_le(DVRIP_iframe_unknown_1, tvb(HEADER_LEN+4, 4))
-				itree_header:add_le(DVRIP_iframe_unknown_2, tvb(HEADER_LEN+8, 4))
-				itree_header:add_le(DVRIP_iframe_payload_size, tvb(HEADER_LEN+12, 4))
-				itree_header:add(DVRIP_iframe_unknown_3, tvb(HEADER_LEN+16, 4))
+				itree_header:add_le(DVRIP_iframe_unknown_1, tvb(HEADER_LEN + 4, 4))
+				itree_header:add_le(DVRIP_iframe_unknown_2, tvb(HEADER_LEN + 8, 4))
+				itree_header:add_le(DVRIP_iframe_payload_size, tvb(HEADER_LEN + 12, 4))
+				itree_header:add(DVRIP_iframe_unknown_3, tvb(HEADER_LEN + 16, 4))
+				-- I-Frame payload
+				itree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "I-Frame")
 			elseif signature == 0x000001fd then -- P-Frame
-				local ptree = subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len()-HEADER_LEN), "DVRIP P-Frame")
+				-- Add P-Frame to general tree
+				local ptree = subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP P-Frame")
 				local ptree_header = ptree:add(XM_proto, tvb(HEADER_LEN, 12), "P-Frame Header")
+				-- P-Frame payload reconstruction
+				local pframe_length = tvb(HEADER_LEN + 4, 2):le_uint()
 				-- Populate P-Frame header fields
 				ptree_header:add(DVRIP_pframe_signature, tvb(HEADER_LEN, 4))
-				ptree_header:add_le(DVRIP_pframe_payload_length, tvb(HEADER_LEN+4, 2))
-				ptree_header:add_le(DVRIP_pframe_unknown_1, tvb(HEADER_LEN+6, 2))
-				ptree_header:add(DVRIP_pframe_unknown_2, tvb(HEADER_LEN+8, 4))
+				ptree_header:add_le(DVRIP_pframe_payload_length, tvb(HEADER_LEN + 4, 2))
+				ptree_header:add_le(DVRIP_pframe_unknown_1, tvb(HEADER_LEN + 6, 2))
+				ptree_header:add(DVRIP_pframe_unknown_2, tvb(HEADER_LEN + 8, 4))
+				-- P-Frame payload
+				ptree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "P-Frame")
 			else
-				subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len()-HEADER_LEN), "DVRIP Media")
+				subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP Media (Continuation)")
 			end
 		end
 	end
