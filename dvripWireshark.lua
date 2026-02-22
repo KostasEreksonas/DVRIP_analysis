@@ -26,9 +26,11 @@ json = Dissector.get("json")
 -- Table to collect media frame data from multiple DVRIP/Sofia packets
 frame = {
 	key = nil,
-	bytes_needed = nil,
+	bytes_needed = 0,
 	bytes_collected = 0,
 	payload = ByteArray.new(),
+	sequence_packet_first = 0,
+	sequence_packet_last = 0,
 }
 
 -- Reassemble multiple TCP packets into a single Protocol Data Unit (PDU)
@@ -46,6 +48,8 @@ DVRIP_sequence_id = ProtoField.uint32("dvrip.sequence_id", "Sequence ID", base.H
 DVRIP_unknown = ProtoField.uint16("dvrip.unknown", "Unknown", base.HEX_DEC)
 DVRIP_command_code = ProtoField.uint16("dvrip.command_code", "Command Code", base.HEX_DEC)
 DVRIP_payload_length = ProtoField.uint32("dvrip.payload_length", "Payload Length", base.HEX_DEC)
+
+-- DVRIP/Sofia JSON payload fields
 DVRIP_payload_JSON_RAW = ProtoField.string("dvrip.data", "Raw JSON Message")
 DVRIP_newline = ProtoField.uint16("dvrip.newline", "Newline", base.HEX_DEC)
 
@@ -148,11 +152,10 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 	header:add_le(DVRIP_payload_length, tvb(16, 4))
 
 	if tvb:len() > HEADER_LEN then
+		-- Length of payload
+		local payload_length = tvb(16, 4):le_uint()
 		-- Get JSON payload
 		if tvb(HEADER_LEN, 1):uint() == 0x7b and tvb(14, 2):le_uint() ~= 0x0584 then -- 0x7b = {; 0x0584 = 1412
-			-- Length of payload
-			local payload_length = tvb(16, 4):le_uint()
-
 			-- Handle trailing newline (last 1 or 2 bytes of a payload)
 			local json_tvb
 			if tvb(HEADER_LEN + payload_length - 1, 1):le_uint() ~= 0x0a then
@@ -173,7 +176,6 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 				subtree:add_le(DVRIP_newline, tvb(trailing, tvb:len() - trailing))
 			end
 		else
-			local sofia_payload = tvb(16, 4):le_uint()
 			-- Signature of media payload
 			local signature = tvb(HEADER_LEN, 4):uint()
 			if signature == 0x000001fa then -- Audio
@@ -201,11 +203,15 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 				itree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "I-Frame")
 				-- Reconstruct I-Frame spanning multiple DVRIP/Sofia messages
 				local iframe_payload = tvb(HEADER_LEN + 12, 4):le_uint() + 16
-				if iframe_payload > sofia_payload then
-					frame.key = "I-Frame (reconstructed)"
+				if iframe_payload > payload_length then
+					frame.key = "I-Frame"
 					frame.bytes_needed = iframe_payload
-					frame.bytes_collected = sofia_payload
-					frame.payload:append(tvb(HEADER_LEN, sofia_payload):bytes())
+					frame.bytes_collected = payload_length
+					frame.payload:append(tvb(HEADER_LEN, payload_length):bytes())
+					local packets_needed = frame.bytes_needed // payload_length + 1
+					local sequence_id = tvb(8, 4):le_uint()
+					frame.sequence_packet_first = sequence_id
+					frame.sequence_packet_last = sequence_id + packets_needed
 				end
 			elseif signature == 0x000001fd then -- P-Frame
 				-- Add P-Frame to general tree
@@ -222,11 +228,15 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 				ptree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "P-Frame")
 				-- Reconstruct P-Frame spanning multiple DVRIP/Sofia messages
 				local pframe_payload = tvb(HEADER_LEN + 4, 2):le_uint() + 8
-				if pframe_payload > sofia_payload then
-					frame.key = "P-Frame (reconstructed)"
+				if pframe_payload > payload_length then
+					frame.key = "P-Frame"
 					frame.bytes_needed = pframe_payload
-					frame.bytes_collected = sofia_payload
-					frame.payload:append(tvb(HEADER_LEN, sofia_payload):bytes())
+					frame.bytes_collected = payload_length
+					frame.payload:append(tvb(HEADER_LEN, payload_length):bytes())
+					local packets_needed = frame.bytes_needed // payload_length + 1
+					local sequence_id = tvb(8, 4):le_uint()
+					frame.sequence_packet_first = sequence_id
+					frame.sequence_packet_last = sequence_id + packets_needed
 				end
 			elseif signature == 0x000001f9 then
 				-- Add E-Frame to general tree
@@ -242,18 +252,25 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 				etree_header:add(DVRIP_eframe_unknown_5, tvb(HEADER_LEN + 16, 4))
 				etree_header:add(DVRIP_eframe_unknown_6, tvb(HEADER_LEN + 20, 4))
 			else
-				if (frame.key == "I-Frame (reconstructed)" or frame.key == "P-Frame (reconstructed)") and pinfo.visited ~= true then
-					frame.bytes_collected = frame.bytes_collected + sofia_payload
-					frame.payload:append(tvb(HEADER_LEN, sofia_payload):bytes())
+				if (frame.key == "I-Frame" or frame.key == "P-Frame") and pinfo.visited ~= true then
+					frame.bytes_collected = frame.bytes_collected + payload_length
+					frame.payload:append(tvb(HEADER_LEN, payload_length):bytes())
 					if frame.bytes_collected == frame.bytes_needed then
-						print(pinfo.visited, pinfo.number, frame.key, frame.bytes_needed, frame.bytes_collected, frame.payload:len())
-						for k, v in pairs(frame) do
-							frame[k] = nil
-						end
+						-- print(pinfo.number, frame.key, frame.payload:len())
+						frame.key = nil
+						frame.bytes_needed = 0
+						frame.bytes_collected = 0
+						frame.sequence_packet_first = 0
+						frame.sequence_packet_last  = 0
 						frame.payload = ByteArray.new()
 					end
 				end
-				subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP Media (Continuation)")
+				local sequence_id_current = tvb(8, 4):le_uint()
+				if sequence_id_current >= frame.sequence_packet_first and sequence_id_current <= frame.sequence_packet_last then
+					subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), frame.key)
+				else
+					subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP Media (Continuation)")
+				end
 			end
 		end
 	end
