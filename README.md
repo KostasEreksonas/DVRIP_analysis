@@ -1,5 +1,6 @@
 # DVRIP_analysis
 A Wireshark dissector for DVRIP/Sofia protocol found in Xiongmai based IP cameras
+Full writeup of a sample IP camera is available at [Besder 6024PB-XMA501 IP camera security investigation](https://github.com/KostasEreksonas/Besder-6024PB-XMA501-ip-camera-security-investigation) repository.
 
 Table of Contents
 =================
