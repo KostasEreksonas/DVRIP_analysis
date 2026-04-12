@@ -102,3 +102,7 @@ Used for information transmission. First byte after signature (byte 4):
 
 1. 0x01 - general information.
 2. 0x06 - unknown value.
+
+# To Do
+
+1. Implement frame keys, so that separate audio/video streams could be saved for data from multiple IP cameras / data stream sessions on the same Wireshark capture file.
