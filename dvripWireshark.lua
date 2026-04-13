@@ -252,19 +252,17 @@ function build_protocol_media_tree(tvb, pinfo, subtree)
 		-- Update pinfo description
 		pinfo.cols.info = "Media signature = " .. string.format("%08x", signature) .. " "
 		-- If no signature matches, treat it as media continuation packet in a protocol tree
-		-- If signature matches, build a protocol tree for the media frame and save payload to a byte buffer 
-		if signature == SIG_AUDIO or signature == SIG_IFRAME or signature == SIG_PFRAME or signature == SIG_INFOFRAME then
-			if signature == SIG_AUDIO then -- Audio
-				populate_audio_tree(tvb, subtree)
-			elseif signature == SIG_IFRAME then -- I-Frame
-				populate_iframe_tree(tvb, subtree)
-			elseif signature == SIG_PFRAME then -- P-Frame
-				populate_pframe_tree(tvb, subtree)
-			elseif signature == SIG_INFOFRAME then -- Information Frame
-				populate_infoframe_tree(tvb, subtree)
-			else
-				subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP Media (Continuation)")
-			end
+		-- If signature matches, build a protocol tree for the media frame and save payload to a byte buffer
+		if signature == SIG_IMAGE then -- JPEG image
+			subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "JPEG Image")
+		elseif signature == SIG_AUDIO then -- Audio
+			populate_audio_tree(tvb, subtree)
+		elseif signature == SIG_IFRAME then -- I-Frame
+			populate_iframe_tree(tvb, subtree)
+		elseif signature == SIG_PFRAME then -- P-Frame
+			populate_pframe_tree(tvb, subtree)
+		elseif signature == SIG_INFOFRAME then -- Information Frame
+			populate_infoframe_tree(tvb, subtree)
 		else
 			subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP Media (Continuation)")
 		end
@@ -314,7 +312,7 @@ function save_image(sequence_id, image_buffer)
 	file:close()
 end
 
-function reconstruct_audio_video_streams(tvb, pinfo)
+function reconstruct_streams(tvb, pinfo)
 	local signature = ""
 	if tvb:len() >= 24 then
 		signature = tvb(HEADER_LEN, 4):uint()
@@ -374,7 +372,7 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 
 			-- Reconstruct DVRIP/Sofia media frames into byte buffers ready for export
 			if not pinfo.visited then
-				reconstruct_audio_video_streams(tvb)
+				reconstruct_streams(tvb)
 			end
 		end
 	end
