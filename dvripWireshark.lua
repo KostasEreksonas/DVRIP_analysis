@@ -376,12 +376,7 @@ function XM_proto.dissector(tvb, pinfo, tree)
 	if tvb:len() == 0 then
 		return
 	end
-
 	dissect_tcp_pdus(tvb, tree, 20, dvrip_get_len, dvrip_dissect_one_pdu, true)
-	-- Save audio and video streams
-	if not pinfo.visited then
-		save_streams()
-	end
 end
 
 -- assigning protocol to port
@@ -389,3 +384,15 @@ tcp_table = DissectorTable.get("tcp.port")
 tcp_table:add(34567, XM_proto)
 udp_table = DissectorTable.get("udp.port")
 udp_table:add(34569, XM_proto)
+
+-- Save audio and video streams
+local tap = Listener.new(nil, "tcp.port == 34567 or udp.port == 34569")
+
+function tap.draw()
+	save_streams()
+end
+
+function tap.reset()
+	video_stream = ByteArray.new()
+	audio_stream = ByteArray.new()
+end
