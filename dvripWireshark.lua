@@ -21,10 +21,11 @@
 local HEADER_LEN = 20
 
 -- Signatures of DVRIP/Sofia media messages
-local SIG_AUDIO   = 0x000001fa
-local SIG_IFRAME  = 0x000001fc
-local SIG_PFRAME  = 0x000001fd
-local SIG_INFOFRAME = 0x000001f9
+local SIG_IMAGE		= 0xffd8ffe0
+local SIG_AUDIO		= 0x000001fa
+local SIG_IFRAME	= 0x000001fc
+local SIG_PFRAME	= 0x000001fd
+local SIG_INFOFRAME	= 0x000001f9
 
 -- Collect video stream
 video_stream = ByteArray.new()
@@ -306,14 +307,23 @@ function reconstruct_long_media_frames(message_length, tvb)
 	end
 end
 
-function reconstruct_audio_video_streams(tvb)
+function save_image(sequence_id, image_buffer)
+	local file_name = string.format("/tmp/%d.jpeg", sequence_id)
+	local file = io.open(file_name, "wb")
+	file:write(image_buffer:raw())
+	file:close()
+end
+
+function reconstruct_audio_video_streams(tvb, pinfo)
 	local signature = ""
 	if tvb:len() >= 24 then
 		signature = tvb(HEADER_LEN, 4):uint()
 	end
 	local message_length = tvb(16, 4):le_uint()
 	local sequence_id = tvb(8, 4):le_uint()
-	if signature == SIG_AUDIO then
+	if signature == SIG_IMAGE then
+		save_image(sequence_id, tvb(HEADER_LEN, message_length))
+	elseif signature == SIG_AUDIO then
 		local audio_payload_length = tvb(26, 2):le_uint()
 		-- Append audio payload to audio stream
 		audio_stream:append(tvb(HEADER_LEN + 8, audio_payload_length):bytes())
