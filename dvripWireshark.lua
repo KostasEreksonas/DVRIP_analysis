@@ -379,7 +379,9 @@ function XM_proto.dissector(tvb, pinfo, tree)
 
 	dissect_tcp_pdus(tvb, tree, 20, dvrip_get_len, dvrip_dissect_one_pdu, true)
 	-- Save audio and video streams
-	save_streams()
+	if not pinfo.visited then
+		save_streams()
+	end
 end
 
 -- assigning protocol to port
