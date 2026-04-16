@@ -68,7 +68,10 @@ local DVRIP_payload_size = ProtoField.uint32("dvrip.payload_size", "Payload Size
 local DVRIP_payload_JSON_RAW = ProtoField.string("dvrip.data", "Raw JSON Message")
 local DVRIP_newline = ProtoField.uint16("dvrip.newline", "Newline", base.DEC_HEX)
 
--- DVRIP media signature field
+-- DVRIP/Sofia encrypted payload field
+local DVRIP_encrypted = ProtoField.string("dvrip.encrypted", "Encrypted Message")
+
+-- DVRIP/Sofia media signature field
 local DVRIP_signature = ProtoField.uint32("dvrip.signature", "Signature", base.HEX_DEC)
 
 -- Stream type
@@ -106,9 +109,11 @@ XM_proto.fields = {
 	DVRIP_current_packet,
 	DVRIP_command_code,
 	DVRIP_payload_size,
-	-- DVRIP JSON payload fields
+	-- DVRIP/Sofia JSON payload fields
 	DVRIP_payload_JSON_RAW,
 	DVRIP_newline,
+	-- Encrypted data
+	DVRIP_encrypted,
 	-- Media frame payload size
 	DVRIP_media_payload_size,
 	-- DVRIP media signature
@@ -241,7 +246,35 @@ local function populate_infoframe_tree(tvb, subtree)
 	infotree:add(XM_proto, tvb(HEADER_LEN + INFOFRAME_HEADER_LEN, tvb:len() - HEADER_LEN - INFOFRAME_HEADER_LEN), "Payload")
 end
 
-local function build_protocol_media_tree(tvb, pinfo, subtree)
+local function get_frame_context(stream_key)
+    if frames[stream_key] == nil then
+        frames[stream_key] = {
+            key = stream_key,
+            bytes_needed = 0,
+            bytes_collected = 0,
+            payload = ByteArray.new(),
+            sequence_packet_first = 0,
+            sequence_packet_last = 0
+        }
+    end
+    return frames[stream_key]
+end
+
+local function check_encryption(frame, signature, subtree, tvb, pinfo)
+	-- Check if DVRIP/Sofia control message is encrypted
+	if frame.payload:len() == 0 and signature ~= SIG_INFOFRAME then
+		subtree:add(XM_proto, tvb(HEADER_LEN, message_length), "Encrypted Payload")
+		subtree:add(DVRIP_encrypted, tvb(HEADER_LEN, message_length))
+		pinfo.cols.info = "Encrypted message "
+	else
+		print(pinfo.number, frame.payload:len())
+		subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP Media (Continuation)")
+		pinfo.cols.info = "DVRIP media continuation message "
+	end
+end
+
+local function build_protocol_media_tree(tvb, pinfo, subtree, stream_key)
+	local frame = get_frame_context(stream_key)
 	-- Check whether enough bytes are present to form a media signature
 	if tvb:len() >= 24 then
 		-- Signature of media payload
@@ -261,27 +294,13 @@ local function build_protocol_media_tree(tvb, pinfo, subtree)
 		elseif signature == SIG_INFOFRAME then -- Information Frame
 			populate_infoframe_tree(tvb, subtree)
 		else
-			subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP Media (Continuation)")
-			pinfo.cols.info = "DVRIP media continuation message "
+			-- Check if DVRIP/Sofia control message is encrypted
+			check_encryption(frame, signature, subtree, tvb, pinfo)
 		end
 	else
-		subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "DVRIP Media (Continuation)")
-		pinfo.cols.info = "DVRIP media continuation message "
+		-- Check if DVRIP/Sofia control message is encrypted
+		check_encryption(frame, signature, subtree, tvb, pinfo)
 	end
-end
-
-local function get_frame_context(stream_key)
-    if frames[stream_key] == nil then
-        frames[stream_key] = {
-            key = stream_key,
-            bytes_needed = 0,
-            bytes_collected = 0,
-            payload = ByteArray.new(),
-            sequence_packet_first = 0,
-            sequence_packet_last = 0
-        }
-    end
-    return frames[stream_key]
 end
 
 local function get_video_stream(stream_key)
@@ -319,6 +338,7 @@ local function collect_frames(stream_key, message_length, sequence_id, frame_len
 	if frame_length <= message_length then
 		local video_stream = get_video_stream(stream_key)
 		video_stream.payload:append(initial_payload)
+		reset_frame_context(stream_key)
 	else
 		frame.bytes_needed = frame_length
 		frame.bytes_collected = message_length
@@ -353,7 +373,7 @@ local function save_image(sequence_id, image_buffer)
 	file:close()
 end
 
-local function reconstruct_streams(tvb, stream_key)
+local function reconstruct_streams(tvb, stream_key, pinfo, subtree)
 	local signature = ""
 	if tvb:len() >= 24 then
 		signature = tvb(HEADER_LEN, 4):uint()
@@ -380,7 +400,9 @@ local function reconstruct_streams(tvb, stream_key)
 		-- Initialize long P-Frames spanning multiple DVRIP/Sofia messages
 		collect_frames(stream_key, message_length, sequence_id, pframe_length, initial_payload, frame)
 	else
-		reconstruct_long_media_frames(message_length, tvb, stream_key, frame)
+		if frame.payload:len() ~= 0 and signature ~= SIG_INFOFRAME then
+			reconstruct_long_media_frames(message_length, tvb, stream_key, frame, pinfo)
+		end
 	end
 end
 
@@ -428,16 +450,14 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 		if tvb(HEADER_LEN, 1):uint() == JSON_OPEN_BRACE and tvb(14, 2):le_uint() ~= CMD_MEDIA_STREAM then
 			build_protocol_tree(tvb, pinfo, subtree, payload_length)
 		else
-			build_protocol_media_tree(tvb, pinfo, subtree)
+			local stream_key = tostring(pinfo.src) .. "_" .. tvb(2, 1):le_uint().. "_" .. tvb(3, 1):le_uint() 
 
+			build_protocol_media_tree(tvb, pinfo, subtree, stream_key)
+			
 			-- Reconstruct DVRIP/Sofia media frames into byte buffers ready for export
 			if not pinfo.visited then
-				local stream_key = tostring(pinfo.src) .. "_" .. tvb(2, 1):le_uint().. "_" .. tvb(3, 1):le_uint() 
-				reconstruct_streams(tvb, stream_key)
+				reconstruct_streams(tvb, stream_key, pinfo, subtree)
 			end
-		end
-		if pinfo.number == 73569 then
-			print(tvb:len())
 		end
 	end
 
