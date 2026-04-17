@@ -136,7 +136,6 @@ XM_proto.fields = {
 }
 
 local function dvrip_get_len(tvb, pinfo, offset)
-	print(pinfo.number, offset)
 	-- if header is truncated, get subsequent TCP packet
 	if tvb:len() - offset < HEADER_LEN then
 		return 0
