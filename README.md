@@ -31,7 +31,13 @@ Copy dvripWireshark.lua to `%APPDATA%\Wireshark\plugins`
 
 # Test Device
 
-This dissector is based on a DVRIP Wireshark Dissector for Port 37777 (Dahua IP camera), which can be found here: https://github.com/r4bit999/dvrip-analysis/tree/master
+This dissector is based on a DVRIP Wireshark Dissector for Port TCP/37777 (Dahua IP camera), which can be found here: https://github.com/r4bit999/dvrip-analysis/tree/master
+
+DVRIP/Sofia protocol found in Xiongmai-based IP cameras run on the following ports:
+1. TCP/34567 for local controls and media stream.
+2. TCP/6611 for cloud controls and media stream.
+3. UDP/34569 and UDP/34571 for local configs.
+4. UDP/7999 and UDP/8765 for cloud configs.
 
 Tested on Besder 6024PB-XMA501 IP camera:
 
