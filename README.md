@@ -151,7 +151,7 @@ Same logic is used both for local and cloud communications with the IP camera. O
 DVRIP/Sofia protocol fields used in this protocol dissector:
 
 |Field Name|Filter Name|Description|
-|----------|-----------|-----------|
+|:--------:|:---------:|:---------:|
 |DVRIP_header|dvrip.header|Full DVRIP/Sofia header|
 |DVRIP_header_id|dvrip.header_id|First byte of DVRIP header, observed to be `0xFF`|
 |DVRIP_req_resp|dvrip.req_resp|Request/response byte. `0x00` for request and `0x01` for response|
