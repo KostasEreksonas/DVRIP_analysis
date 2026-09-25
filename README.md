@@ -45,14 +45,14 @@ Firmware version: V5.00.R02.00030747.10010.349f17
 
 # DVRIP/Sofia Headers
 
-Aside from the main DVRIP/Sofia message header, the protocol has additional headers for the following payloads:
+Aside from the main DVRIP/Sofia message header (which is in little-endian (LE) format), the protocol has additional headers for the following payloads:
 1. I-Frame payloads
 2. P-Frame payloads
 3. Audio payloads
 4. Snapshot payloads
 5. Information frame payloads
 
-All non-JSON payload header fields have their values in little-endian (LE) order (except for the first 4 header bytes that are in big-endian (BE) order and represent the payload type).
+All non-JSON payload header fields have their values in little-endian order (except for the first 4 header bytes that are in big-endian (BE) order and represent the payload type).
 
 Media payload headers were reconstructed based on [Xiongmai bitstream frame format document](https://www.scribd.com/document/669666260/%E7%A0%81%E6%B5%81%E5%B8%A7%E6%A0%BC%E5%BC%8F%E6%96%87%E6%A1%A3).
 
@@ -111,7 +111,7 @@ Diagram, depicting the header of an I-Frame payload:
 3. BYTE 5: encoded framerate (variable; 1-25 for PAL, 1-30 for NTSC)
 4. BYTE 6: low 8 bits of image width; the value is actual width divided by 8
 5. BYTE 7: low 8 bits of image height; the value is actual height divided by 8
-6. BYTES 8-11: datetime of the capture
+6. BYTES 8-11: capture date
 7. BYTES 12-15: length of I-Frame payload
 
 I-Frame header, as depicted in Wireshark:
