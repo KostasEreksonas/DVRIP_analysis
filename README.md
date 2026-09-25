@@ -1,12 +1,12 @@
 # DVRIP_analysis
-A Wireshark dissector for DVRIP/Sofia protocol found in Xiongmai based IP cameras
-Full writeup of a sample IP camera is available at [Besder 6024PB-XMA501 IP camera security investigation](https://github.com/KostasEreksonas/Besder-6024PB-XMA501-ip-camera-security-investigation) repository.
+A Wireshark dissector for DVRIP/Sofia protocol found in Xiongmai based IP cameras. Full writeup of a sample IP camera is available at [Besder 6024PB-XMA501 IP camera security investigation](https://github.com/KostasEreksonas/Besder-6024PB-XMA501-ip-camera-security-investigation) repository.
+
+This dissector is based on a DVRIP Wireshark Dissector for Port TCP/37777 (Dahua IP camera), which can be found here: https://github.com/r4bit999/dvrip-analysis/tree/master
 
 Table of Contents
 =================
 * [Usage](#usage)
     * [Linux](#linux)
-    * [Windows](#windows)
 * [Test Device](#test-device)
 * [DVRIP/Sofia Headers](#dvripsofia-headers)
     * [DVRIP/Sofia Message Header](#dvripsofia-message-header)
@@ -16,24 +16,19 @@ Table of Contents
     * [B-Frames](#b-frames)
     * [Information Frame Header](#information-frame-header)
 * [Saving Streams](#saving-streams)
-* [Cloud Communications](#cloud-communications)
 * [DVRIP/Sofia Protocol Field List](#dvripsofia-protocol-field-list)
 
 # Usage
 
 ## Linux
 
+Copy `dvripWireshark.lua` to Wireshark plugin directory:
+
 ```
 cp dvripWireshark.lua /usr/lib/wireshark/plugins/
 ```
 
-## Windows
-
-Copy dvripWireshark.lua to `%APPDATA%\Wireshark\plugins`
-
 # Test Device
-
-This dissector is based on a DVRIP Wireshark Dissector for Port TCP/37777 (Dahua IP camera), which can be found here: https://github.com/r4bit999/dvrip-analysis/tree/master
 
 DVRIP/Sofia protocol found in Xiongmai-based IP cameras run on the following ports:
 1. `TCP/34567` for local controls and media stream.
@@ -79,10 +74,10 @@ A diagram depicting DVRIP/Sofia message header is presented below:
     * Otherwise the value equals `0`.
 5. BYTES 4-7: session ID. Assigned by the camera after successful login. Needs to be present in every subsequent message.
 6. BYTES 8-11: sequence number. Increments from 0 after startup, and after reaching the (unknown) maximum, starts from 0 again.
-7. BYTE 12: total number of messages in a single packet. Value of 0 or 1 indicate a single message per packet. 
+7. BYTE 12: total number of messages in a single packet. Value of 0 or 1 indicates a single message per packet. 
 8. BYTE 13: number of a current message in a packet. Meaningful only when the value of total packets (BYTE 12) is greater than 1.
 9. BYTES 14-15: command code (also called message id). The code defines what action to perform.
-10. BYTES 16-19: data (payload) length. Length of a JSON payload, which starts immediately after DVRIP/Sofia header.
+10. BYTES 16-19: data (payload) length of a given DVRIP message.
 
 DVRIP message header, as represented in Wireshark:
 
@@ -90,7 +85,7 @@ DVRIP message header, as represented in Wireshark:
 
 ## Audio Header
 
-DVRIP audio payload has it's own header, depicted below:
+DVRIP audio payload has its own header, depicted below:
 
 ![DVRIP audio header](./images/Audio_header.png)
 
@@ -105,7 +100,7 @@ Header of DVRIP audio payload, as depicted in Wireshark:
 
 ## I-Frame Header
 
-In video encoding, I-Frame (or intra-codeed picture) is a standalone image that is used as a visual information base for a chain of surrounding predicted pictures (P-Frames) and bidirectional predicted pictures (B-Frames) - both of which store only changes from a referenced previous image. 
+In video encoding, I-Frame (or intra-coded picture) is a standalone image that is used as a visual information base for a chain of surrounding predicted pictures (P-Frames) and bidirectional predicted pictures (B-Frames) - both of which store only changes from a referenced previous image. 
 
 Diagram, depicting the header of an I-Frame payload:
 
@@ -114,8 +109,8 @@ Diagram, depicting the header of an I-Frame payload:
 1. BYTES 0-3: signature
 2. BYTE 4: video codec (0x01 = MPEG4, 0x02 = H.264, 0x12 = H.265)
 3. BYTE 5: encoded framerate (variable; 1-25 for PAL, 1-30 for NTSC)
-4. BYTE 6: low 8 bytes of image width; the value is actual width divided by 8
-5. BYTE 7: low 8 bytes of image height; the value is actual height divided by 8
+4. BYTE 6: low 8 bits of image width; the value is actual width divided by 8
+5. BYTE 7: low 8 bits of image height; the value is actual height divided by 8
 6. BYTES 8-11: datetime of the capture
 7. BYTES 12-15: length of I-Frame payload
 
@@ -123,17 +118,15 @@ I-Frame header, as depicted in Wireshark:
 
 ![DVRIP I-Frame in Wireshark](images/Iframe_header_wireshark.png)
 
-Since only H.264 video stream data was captured during a test run of this dissector, transmitted I-Frames are stored in Network Abstraction Layer Units (NALUs) and the start of every I-Frame is defined by Annex-B (`0x00000001`) prefix.
+Transmitted I-Frames are stored in Network Abstraction Layer Units (NALUs) and the start of every I-Frame is defined by Annex-B (`0x00000001`) prefix.
 
 Same header structure is shared between I-Frames (FC) and snapshots (FE).
 
 ## P-Frame Header
 
-Diagram, depicting the header of an P-Frame payload:
+Diagram, depicting the header of a P-Frame payload:
 
 ![DVRIP P-Frame header](images/Pframe_header.png)
-
-P-Frames take information 
 
 1. BYTES 0-3: signature
 2. BYTES 4-7: length of P-Frame payload
@@ -142,7 +135,7 @@ P-Frame header, as depicted in Wireshark:
 
 ![DVRIP P-Frame in Wireshark](images/Pframe_header_wireshark.png)
 
-Same as with I-Frames, P-Frames of a H.264 video stream are stored in NALUs with every unit identified by Annex-B prefix.
+Same as with I-Frames, P-Frames of a captured stream are stored in NALUs with every unit identified by Annex-B prefix.
 
 ## B-Frames
 
@@ -150,7 +143,7 @@ No B-Frames were captured while testing the Wireshark dissector.
 
 ## Information Frame Header
 
-Diagram, depicting the header of an information frame payload:
+Diagram depicting the header of an information frame payload:
 
 ![DVRIP information frame header](images/Information_frame_header.png)
 
@@ -159,7 +152,7 @@ Diagram, depicting the header of an information frame payload:
 3. BYTE 5: unused value
 4. BYTES 6-7: payload length
 
-Information frame, as depicted in Wireshark:
+Information frame as depicted in Wireshark:
 
 ![DVRIP information frame in Wireshark](images/Information_frame_header_wireshark.png)
 
@@ -176,10 +169,6 @@ File names of saved streams are structured as follows:
 
 `<camera-ip-address>_<reserved-byte-1>_<reserved-byte-2>_<audio|video>.<g711|h265>`
 
-# Cloud Communications
-
-Same communication protocol is used for both local and cloud communications with the IP camera. Only observed difference is that local communications use port `TCP/34567` while for cloud communications port `TCP/6611` is used.
-
 # DVRIP/Sofia Protocol Field List
 
 DVRIP/Sofia protocol fields used in this protocol dissector:
@@ -194,11 +183,11 @@ DVRIP/Sofia protocol fields used in this protocol dissector:
 |DVRIP_session_id|dvrip.session_id|ID of an established session|
 |DVRIP_sequence_id|dvrip.sequence_id|Sequence ID. Message number in the current session|
 |DVRIP_total_packets|dvrip.total_packets|Number of messages in a single packet. 0 or 1 indicate a single message|
-|DVRIP_current_packet|dvrip.current_packet|current message in a packet. Meaningful only when total packets > 1|
+|DVRIP_current_packet|dvrip.current_packet|Current message in a packet. Meaningful only when total packets > 1|
 |DVRIP_command_code|dvrip.command_code|Command code/Message ID. Identifies an action to perform|
 |DVRIP_payload_size|dvrip.payload_size|Payload size of a current message|
 |DVRIP_payload_JSON_RAW|dvrip.data|JSON data payload. Starts immediately after header|
-|DVRIP_newline|dvrip.newline|Trailin newline after JSON payload|
+|DVRIP_newline|dvrip.newline|Trailing newline after JSON payload|
 |DVRIP_cloud_ip|dvrip.cloud_ip|IP address of cloud relay|
 |DVRIP_home_ip|dvrip.home_ip|Public IP address of a home network|
 |DVRIP_device_id|dvrip.device_id|Serial number of IP camera|
