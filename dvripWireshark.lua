@@ -37,15 +37,6 @@ local INFOFRAME_HEADER_LEN = 8
 local JSON_OPEN_BRACE  = 0x7b
 local CMD_MEDIA_STREAM = 0x0584  -- Command code 1412: media stream, not JSON
 
--- Collect video stream
-local video_streams = {}
-
--- Collect audio stream
-local audio_streams = {}
-
--- Table to collect media frame data from multiple DVRIP/Sofia packets
-local frames = {}
-
 -- Load JSON dissector
 local json = Dissector.get("json")
 
@@ -378,7 +369,6 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 			end
 		end
 	end
-
 	return tvb:len() -- amount of bytes consumed
 end
 
