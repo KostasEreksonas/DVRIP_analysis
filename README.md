@@ -15,7 +15,7 @@ Table of Contents
     * [P-Frame Header](#p-frame-header)
     * [B-Frames](#b-frames)
     * [Information Frame Header](#information-frame-header)
-* [Saving Streams](#saving-streams)
+* [Save Streams](#save-streams)
 * [DVRIP/Sofia Protocol Field List](#dvripsofia-protocol-field-list)
 
 # Usage
@@ -161,9 +161,11 @@ Used for information transmission. First byte after signature is observed to be 
 1. 0x01 - general information.
 2. 0x06 - unknown value.
 
-# Saving Streams
+# Save Streams
 
-This dissector is programmed to reconstruct audio and video streams from the packet capture (.pcap) file. In Wireshark GUI, navigate to the `Tools` menu and select `DVRIP Save Streams` entry. In the pop-up dialog box, enter the desired folder to save streams in.
+***Tested on Linux only!***
+
+`dvrip_video_reconstruction.lua` is a slightly older version of this dissector that is programmed to reconstruct audio and video streams from the packet capture (.pcap) file. Copy this file to `/usr/lib/wireshark/plugins`, then start Wireshark. In it's GUI, navigate to `Tools` menu and select `DVRIP Save Streams` entry. In the pop-up dialog box, enter the desired folder to save the streams.
 
 File names of saved streams are structured as follows:
 
