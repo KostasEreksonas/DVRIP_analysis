@@ -94,6 +94,12 @@ local DVRIP_sampling_rate = ProtoField.uint8("dvrip.sampling_rate", "Audio Sampl
 -- Unused field in information frame (F9)
 local DVRIP_unused_field = ProtoField.uint8("dvrip.unused_field", "Unused Field", base.DEC_HEX)
 
+-- Payloads
+local DVRIP_iframe_payload = ProtoField.bytes("dvrip.iframe_payload", "I-Frame Payload")
+local DVRIP_pframe_payload = ProtoField.bytes("dvrip.pframe_payload", "P-Frame Payload")
+local DVRIP_audio_payload = ProtoField.bytes("dvrip.audio_payload", "Audio Payload")
+local DVRIP_media_continuation_payload = ProtoField.bytes("dvrip.media_continuation", "Media Continuation Payload")
+
 -- List of DVRIP/Sofia protocol fields
 XM_proto.fields = {
 	-- DVRIP header fields
@@ -134,7 +140,12 @@ XM_proto.fields = {
 	-- DVRIP A-Frame (audio) fields
 	DVRIP_sampling_rate,
 	-- DVRIP E-Frame (encoding) fields
-	DVRIP_unused_field
+	DVRIP_unused_field,
+	-- Payloads
+	DVRIP_iframe_payload,
+	DVRIP_pframe_payload,
+	DVRIP_audio_payload,
+	DVRIP_media_continuation_payload
 }
 
 local function match_config(tvb, subtree, protocol_field, match_string)
@@ -258,7 +269,7 @@ local function populate_audio_tree(tvb, subtree)
 	atree_header:add_le(DVRIP_media_payload_size, tvb(HEADER_LEN + 6, 2))
 
 	-- Audio Frame payload
-	atree:add(XM_proto, tvb(HEADER_LEN + AFRAME_HEADER_LEN, tvb:len() - HEADER_LEN - AFRAME_HEADER_LEN), "Payload")
+	atree:add(DVRIP_audio_payload, tvb(HEADER_LEN + AFRAME_HEADER_LEN, tvb:len() - HEADER_LEN - AFRAME_HEADER_LEN))
 end
 
 local function populate_iframe_tree(tvb, subtree)
@@ -276,7 +287,7 @@ local function populate_iframe_tree(tvb, subtree)
 	itree_header:add_le(DVRIP_media_payload_size, tvb(HEADER_LEN + 12, 4))
 
 	-- I-Frame payload
-	itree:add(XM_proto, tvb(HEADER_LEN + IFRAME_HEADER_LEN, tvb:len() - HEADER_LEN - IFRAME_HEADER_LEN), "I-Frame")
+	itree:add(DVRIP_iframe_payload, tvb(HEADER_LEN + IFRAME_HEADER_LEN, tvb:len() - HEADER_LEN - IFRAME_HEADER_LEN))
 end
 
 local function populate_pframe_tree(tvb, subtree)
@@ -304,7 +315,7 @@ local function populate_infoframe_tree(tvb, subtree)
 	infotree_header:add_le(DVRIP_media_payload_size, tvb(HEADER_LEN + 6, 2))
 
 	-- Add information frame payload to the general tree
-	infotree:add(XM_proto, tvb(HEADER_LEN + INFOFRAME_HEADER_LEN, tvb:len() - HEADER_LEN - INFOFRAME_HEADER_LEN), "Payload")
+	infotree:add(DVRIP_pframe_payload, tvb(HEADER_LEN + INFOFRAME_HEADER_LEN, tvb:len() - HEADER_LEN - INFOFRAME_HEADER_LEN))
 end
 
 local function mark_encrypted(message_length, subtree, tvb, pinfo)
@@ -326,16 +337,16 @@ local function build_protocol_media_tree(tvb, pinfo, subtree, message_length)
 		-- If signature matches, build a protocol tree for the media frame and save payload to a byte buffer
 		if signature == SIG_IMAGE then -- JPEG image
 			subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "JPEG Image")
-		elseif signature == SIG_AUDIO then -- Audio
+		elseif signature == SIG_AUDIO and tvb:len() >= HEADER_LEN + 8 then -- Audio
 			populate_audio_tree(tvb, subtree)
-		elseif signature == SIG_IFRAME then -- I-Frame
+		elseif signature == SIG_IFRAME and tvb:len() >= HEADER_LEN + 16 then -- I-Frame
 			populate_iframe_tree(tvb, subtree)
-		elseif signature == SIG_PFRAME then -- P-Frame
+		elseif signature == SIG_PFRAME and tvb:len() >= HEADER_LEN + 8 then -- P-Frame
 			populate_pframe_tree(tvb, subtree)
 		elseif signature == SIG_INFOFRAME then -- Information Frame
 			populate_infoframe_tree(tvb, subtree)
 		else
-			subtree:add(XM_proto, tvb(HEADER_LEN, tvb:len() - HEADER_LEN), "Media Continuation Message")
+			subtree:add(DVRIP_media_continuation_payload, tvb(HEADER_LEN, tvb:len() - HEADER_LEN))
 			pinfo.cols.protocol = XM_proto.name
 			pinfo.cols.info = "Media Continuation Message "
 		end
@@ -355,13 +366,13 @@ local function dvrip_dissect_one_pdu(tvb, pinfo, tree)
 		build_message_header(tvb, header)
 
 		if tvb:len() > HEADER_LEN then
-			-- Length of a DVRIP/Sofia message (without 20-bit header)
+			-- Length of a DVRIP/Sofia message (without 20-byte header)
 			local payload_length = tvb(16, 4):le_uint()
 
 			-- Build protocol tree with control flow messages (JSON-based) and media payloads
 			if tvb(HEADER_LEN, 1):uint() == JSON_OPEN_BRACE and tvb(14, 2):le_uint() ~= CMD_MEDIA_STREAM then
 				build_protocol_tree(tvb, pinfo, subtree, payload_length)
-			elseif tvb(HEADER_LEN, 1):uint() ~= JSON_OPEN_BRACE and tvb(14, 2):le_uint() == CMD_MEDIA_STREAM then
+			elseif tvb(14, 2):le_uint() == CMD_MEDIA_STREAM then
 				build_protocol_media_tree(tvb, pinfo, subtree, payload_length)
 			else
 				-- Distinguish between encrypted DVRIP/Sofia message and media continuation packet
@@ -383,7 +394,7 @@ function XM_proto.dissector(tvb, pinfo, tree)
 	elseif tvb(0, 1):uint() == JSON_OPEN_BRACE then
 		udp_dissect_json_pdu(tvb, pinfo, tree)
 	elseif tvb(0, 1):uint() ~= 0xFF then
-		dissect_tcp_pdus(tvb, tree, 0, dvrip_get_len, dvrip_dissect_one_pdu, true)
+		dvrip_dissect_one_pdu(tvb, pinfo, tree)
 	else
 		dissect_tcp_pdus(tvb, tree, HEADER_LEN, dvrip_get_len, dvrip_dissect_one_pdu, true)
 	end
