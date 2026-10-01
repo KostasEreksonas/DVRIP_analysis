@@ -319,7 +319,6 @@ local function populate_infoframe_tree(tvb, subtree)
 end
 
 local function mark_encrypted(message_length, subtree, tvb, pinfo)
-	subtree:add(XM_proto, tvb(HEADER_LEN, message_length), "Encrypted Payload")
 	subtree:add(DVRIP_encrypted, tvb(HEADER_LEN, message_length))
 	pinfo.cols.protocol = XM_proto.name
 	pinfo.cols.info = "Encrypted Message "
